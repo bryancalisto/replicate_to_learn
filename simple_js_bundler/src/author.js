@@ -1,0 +1,1 @@
+export const author = 'THE AUTHOR\'S NAME';

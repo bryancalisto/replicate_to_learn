@@ -1,0 +1,13 @@
+{
+  "name": "simple_js_bundler",
+  "version": "1.0.0",
+  "description": "Super simple webpack",
+  "main": "bundler.js",
+  "scripts": {
+    "start": "node bundler.js"
+  },
+  "type": "module",
+  "dependencies": {
+    "babylon": "^6.18.0"
+  }
+}
