@@ -1,6 +1,7 @@
 import fs from 'fs';
 import babylon from 'babylon';
 import babelTraverse from 'babel-traverse';
+import babel from 'babel-core';
 import path from 'path';
 
 let fileId = 0;
@@ -16,12 +17,18 @@ function createAsset(filename) {
     ImportDeclaration: ({ node }) => {
       dependencies.push(node.source.value);
     }
+  });
+
+  // Convert the js code to an more compatible version by transpiling it
+  const transpiledCode = babel.transformFromAst(parsedAst, null, {
+    presets: ['env']
   })
 
   return {
     id: fileId++,
     filename,
-    dependencies
+    dependencies,
+    transpiledCode
   }
 }
 
@@ -48,6 +55,18 @@ function createGraph(entryFile) {
   }
 
   return assets;
+}
+
+function bundle(graph) {
+  let modules = '';
+
+  const result = `
+  (function(){
+
+  })({
+
+  })
+  `;
 }
 
 const graph = createGraph('src\\entry.js');
