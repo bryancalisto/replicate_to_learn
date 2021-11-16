@@ -22,7 +22,7 @@ function createAsset(filename) {
   // Convert the js code to an more compatible version by transpiling it
   const transpiledCode = babel.transformFromAst(parsedAst, null, {
     presets: ['env']
-  })
+  }).code;
 
   return {
     id: fileId++,
@@ -60,14 +60,41 @@ function createGraph(entryFile) {
 function bundle(graph) {
   let modules = '';
 
-  const result = `
-  (function(){
-
-  })({
-
+  graph.forEach(module => {
+    modules += `
+    ${module.id}:[
+      function(require, module, exports){
+        ${module.transpiledCode}
+      },
+      ${JSON.stringify(module.mapping)}
+    ],
+    `
   })
+
+  // This is the bundle itself
+  const result = `
+  (function(modules){
+    function require(id){
+      const [func, mapping] = modules[id];
+
+      function localRequire(relativePath){
+        return require(mapping[relativePath]);
+      }
+
+      const module = { exports: {} };
+
+      func(localRequire, module, module.exports);
+
+      return module.exports;
+    }
+
+    require(0);
+  })({${modules}});
   `;
+
+  return result;
 }
 
 const graph = createGraph('src\\entry.js');
-console.log(graph);
+const result = bundle(graph);
+console.log(result);
