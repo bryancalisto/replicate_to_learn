@@ -1,13 +1,16 @@
+// Adapted from https://en.wikipedia.org/wiki/MD5
+// Support for little endian encoding only for now
 package main
 
-const BITS_8 = 0xff   // bytes - 512 bits
-const CHUNK_SIZE = 64 // bytes - 512 bits
+import (
+	"fmt"
+)
 
-// States
-const A = 0x67452301
-const B = 0xefcdab89
-const C = 0x98badcfe
-const D = 0x10325476
+const MASK_8_BITS = 0xff
+const MASK_32_BITS = 0xffffffff
+const CHUNK_SIZE = 64 // bytes - 512 bits
+const BYTES_PER_WORD = 4
+const BITS_PER_BYTE = 8
 
 /*
  To pad the original data as needed by the algorithm.
@@ -22,7 +25,7 @@ func padData(data []byte) []byte {
 
 	// Set padding
 	paddedData = append(paddedData, 0x80) // 10000000
-	for len(paddedData)%64 != 56 {
+	for len(paddedData)%CHUNK_SIZE != 56 {
 		paddedData = append(paddedData, 0x0)
 	}
 
@@ -31,15 +34,16 @@ func padData(data []byte) []byte {
 	bytes := int64(8)
 
 	for i := int64(bytes - 1); int64(i) >= 0; i-- {
-		paddedData = append(paddedData, byte((tempSize>>(bytes*i))&BITS_8))
+		paddedData = append(paddedData, byte((tempSize>>(bytes*i))&MASK_8_BITS))
 	}
 
+	// return convertToLittleEndian(paddedData)
 	return paddedData
 }
 
 // Sines of integers (radians)
-func getK() [64]int {
-	return [64]int{
+func getK() [64]uint32 {
+	return [64]uint32{
 		0xd76aa478, 0xe8c7b756, 0x242070db, 0xc1bdceee, 0xf57c0faf, 0x4787c62a,
 		0xa8304613, 0xfd469501, 0x698098d8, 0x8b44f7af, 0xffff5bb1, 0x895cd7be,
 		0x6b901122, 0xfd987193, 0xa679438e, 0x49b40821, 0xf61e2562, 0xc040b340,
@@ -55,15 +59,111 @@ func getK() [64]int {
 }
 
 // Per-round shift amounts
-func getS() [64]int {
-	return [64]int{
-		7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 5, 9, 14,
-		20, 5, 9, 14, 20, 5, 9, 14, 20, 5, 9, 14, 20, 4, 11, 16, 23, 4, 11,
-		16, 23, 4, 11, 16, 23, 4, 11, 16, 23, 6, 10, 15, 21, 6, 10, 15, 21, 6,
-		10, 15, 21, 6, 10, 15, 21,
+func getS() [64]uint32 {
+	return [64]uint32{
+		7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22,
+		5, 9, 14, 20, 5, 9, 14, 20, 5, 9, 14, 20, 5, 9, 14, 20,
+		4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23,
+		6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21,
 	}
 }
 
-// func updateHash(data []byte) {
+func hash(data []byte) [16]byte {
+	a0 := uint32(0x67452301)
+	b0 := uint32(0xefcdab89)
+	c0 := uint32(0x98badcfe)
+	d0 := uint32(0x10325476)
+	A := a0
+	B := b0
+	C := c0
+	D := d0
+	K := getK()
+	S := getS()
+	var g uint32
+	var F uint32
+	digest := [16]byte{}
 
-// }
+	// Set padding
+	data = padData(data)
+
+	// Process the hash itself
+	for i := 0; i < len(data)/CHUNK_SIZE; i++ {
+		M := [16]uint32{}
+		for j := 0; j < 16; j++ {
+			offset := i*16 + j*4
+			M[j] = uint32(data[offset])<<24 | uint32(data[offset+1])<<16 | uint32(data[offset+2])<<8 | uint32(data[offset+3])
+			// M[j] = uint32(data[offset+3])<<24 | uint32(data[offset+3])<<16 | uint32(data[offset+1])<<8 | uint32(data[offset])
+			// M[j] = uint32(data[offset]) | uint32(data[offset+1])<<8 | uint32(data[offset+2])<<16 | uint32(data[offset+3])<<24
+		}
+
+		for k := uint32(0); k < 64; k++ {
+			if k <= 15 {
+				F = (B & C) | (^B & D)
+				g = k
+			} else if k >= 16 && k <= 31 {
+				F = (D & B) | (^D & C)
+				g = (5*k + 1) % 16
+			} else if k >= 32 && k <= 47 {
+				F = B ^ C ^ D
+				g = (3*k + 5) % 16
+			} else if k >= 48 && k <= 63 {
+				F = C ^ (B | ^D)
+				g = (7 * k) % 16
+			}
+
+			// fmt.Println(unsafe.Sizeof(M[g]))
+			// F = add32Bit(add32Bit(add32Bit(F, A), K[k]), M[g])
+			F = F + A + K[k] + M[g]
+			A = D
+			D = C
+			C = B
+			B = B + leftRotate(F, S[k])
+			// fmt.Println(unsafe.Sizeof(A))
+			a0 += A
+			b0 += B
+			c0 += C
+			d0 += D
+		}
+	}
+
+	// Form the resulting digest.
+	// I didn't want to write the all the digest byte assignations manually, that's why I used this loop
+	processedData := [4]uint32{a0, b0, c0, d0}
+	for i := 0; i < 4; i++ {
+		for j := 0; j < 4; j++ {
+			// fmt.Printf("%x\n", processedData[i]>>(24-j*8)&MASK_8_BITS)
+			// digest[i*4+j] = byte((processedData[i] >> (24 - j*8)))
+			digest[i*4+j] = byte((processedData[i] >> (j * 8)))
+		}
+	}
+
+	fmt.Printf("%x", digest)
+	return digest
+}
+
+func leftRotate(val uint32, shift uint32) uint32 {
+	var mod_shift = shift & 31
+	return ((val << mod_shift) & MASK_32_BITS) | ((val & MASK_32_BITS) >> (32 - mod_shift))
+}
+
+func add32Bit(a uint32, b uint32) uint32 {
+	return uint32(a+b) & MASK_32_BITS
+}
+
+func convertToLittleEndian(data []byte) []byte {
+	var temp0 byte
+	var temp1 byte
+	var temp2 byte
+
+	for i := 0; i < len(data)/BYTES_PER_WORD; i++ {
+		temp0 = data[i+3]
+		temp1 = data[i+2]
+		temp2 = data[i+1]
+		data[i+3] = data[i]
+		data[i+2] = temp2
+		data[i+1] = temp1
+		data[i] = temp0
+	}
+
+	return data
+}
