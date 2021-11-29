@@ -2,10 +2,6 @@
 // Support for little endian encoding only for now
 package main
 
-import (
-	"fmt"
-)
-
 const MASK_8_BITS = 0xff
 const MASK_32_BITS = 0xffffffff
 const CHUNK_SIZE = 64 // bytes - 512 bits
@@ -29,16 +25,16 @@ func padData(data []byte) []byte {
 		paddedData = append(paddedData, 0x0)
 	}
 
-	// Append the original data size (64 bits)
-	tempSize := int64(originalSize)
+	// Append the original data size (64 bits). Just little endian by now
+	tempSize := int64(originalSize) * BITS_PER_BYTE
 	bytes := int64(8)
 
-	for i := int64(bytes - 1); int64(i) >= 0; i-- {
+	for i := int64(0); int64(i) < bytes; i++ {
 		paddedData = append(paddedData, byte((tempSize>>(bytes*i))&MASK_8_BITS))
 	}
 
-	// return convertToLittleEndian(paddedData)
-	return paddedData
+	return convertToLittleEndian(paddedData)
+	// return paddedData
 }
 
 // Sines of integers (radians)
@@ -111,19 +107,17 @@ func hash(data []byte) [16]byte {
 				g = (7 * k) % 16
 			}
 
-			// fmt.Println(unsafe.Sizeof(M[g]))
-			// F = add32Bit(add32Bit(add32Bit(F, A), K[k]), M[g])
+			// F = add32Bit(add32Bit(F, A), add32Bit(K[k], M[g]))
 			F = F + A + K[k] + M[g]
 			A = D
 			D = C
 			C = B
 			B = B + leftRotate(F, S[k])
-			// fmt.Println(unsafe.Sizeof(A))
-			a0 += A
-			b0 += B
-			c0 += C
-			d0 += D
 		}
+		a0 += A
+		b0 += B
+		c0 += C
+		d0 += D
 	}
 
 	// Form the resulting digest.
@@ -131,13 +125,10 @@ func hash(data []byte) [16]byte {
 	processedData := [4]uint32{a0, b0, c0, d0}
 	for i := 0; i < 4; i++ {
 		for j := 0; j < 4; j++ {
-			// fmt.Printf("%x\n", processedData[i]>>(24-j*8)&MASK_8_BITS)
-			// digest[i*4+j] = byte((processedData[i] >> (24 - j*8)))
 			digest[i*4+j] = byte((processedData[i] >> (j * 8)))
 		}
 	}
 
-	fmt.Printf("%x", digest)
 	return digest
 }
 
@@ -155,7 +146,7 @@ func convertToLittleEndian(data []byte) []byte {
 	var temp1 byte
 	var temp2 byte
 
-	for i := 0; i < len(data)/BYTES_PER_WORD; i++ {
+	for i := 0; i < len(data); i += BYTES_PER_WORD {
 		temp0 = data[i+3]
 		temp1 = data[i+2]
 		temp2 = data[i+1]
