@@ -33,8 +33,8 @@ func padData(data []byte) []byte {
 		paddedData = append(paddedData, byte((tempSize>>(bytes*i))&MASK_8_BITS))
 	}
 
-	return convertToLittleEndian(paddedData)
-	// return paddedData
+	// Current implementation works with little endian only
+	return paddedData
 }
 
 // Sines of integers (radians)
@@ -79,17 +79,15 @@ func hash(data []byte) [16]byte {
 	var F uint32
 	digest := [16]byte{}
 
-	// Set padding
-	data = padData(data)
+	// Set padding and convert to little endian
+	data = convertToLittleEndian(padData(data))
 
-	// Process the hash itself
+	// Process 512 bit chunks and form the hash based on the the results of every chunk processing
 	for i := 0; i < len(data)/CHUNK_SIZE; i++ {
 		M := [16]uint32{}
 		for j := 0; j < 16; j++ {
 			offset := i*16 + j*4
 			M[j] = uint32(data[offset])<<24 | uint32(data[offset+1])<<16 | uint32(data[offset+2])<<8 | uint32(data[offset+3])
-			// M[j] = uint32(data[offset+3])<<24 | uint32(data[offset+3])<<16 | uint32(data[offset+1])<<8 | uint32(data[offset])
-			// M[j] = uint32(data[offset]) | uint32(data[offset+1])<<8 | uint32(data[offset+2])<<16 | uint32(data[offset+3])<<24
 		}
 
 		for k := uint32(0); k < 64; k++ {
@@ -107,7 +105,6 @@ func hash(data []byte) [16]byte {
 				g = (7 * k) % 16
 			}
 
-			// F = add32Bit(add32Bit(F, A), add32Bit(K[k], M[g]))
 			F = F + A + K[k] + M[g]
 			A = D
 			D = C
@@ -121,7 +118,7 @@ func hash(data []byte) [16]byte {
 	}
 
 	// Form the resulting digest.
-	// I didn't want to write the all the digest byte assignations manually, that's why I used this loop
+	// I didn't want to write all the digest byte assignations manually, that's why I used this loop
 	processedData := [4]uint32{a0, b0, c0, d0}
 	for i := 0; i < 4; i++ {
 		for j := 0; j < 4; j++ {
@@ -135,10 +132,6 @@ func hash(data []byte) [16]byte {
 func leftRotate(val uint32, shift uint32) uint32 {
 	var mod_shift = shift & 31
 	return ((val << mod_shift) & MASK_32_BITS) | ((val & MASK_32_BITS) >> (32 - mod_shift))
-}
-
-func add32Bit(a uint32, b uint32) uint32 {
-	return uint32(a+b) & MASK_32_BITS
 }
 
 func convertToLittleEndian(data []byte) []byte {
